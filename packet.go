@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
+	"unsafe"
 
 	"github.com/deblasis/godivert/header"
 )
@@ -507,4 +508,29 @@ func (p *Packet) parseIPHeader() {
 		p.nextHeaderType = p.Raw[6]
 		p.IpHdr = header.NewIPv6Header(p.Raw)
 	}
+}
+
+// DecrementTTL уменьшает TTL (IPv4) или Hop Limit (IPv6) на 1.
+// Возвращает true при успехе, false если TTL уже 0 или произошла ошибка.
+// Требует, чтобы DLL была загружена через LoadDLL.
+//
+// Реализует вызов WinDivertHelperDecrementTTL:
+// https://reqrypt.org/windivert-doc.html#divert_helper_decrement_ttl
+func (p *Packet) DecrementTTL() bool {
+	if len(p.Raw) == 0 {
+		return false
+	}
+
+	dllMutex.RLock()
+	defer dllMutex.RUnlock()
+
+	if winDivertHelperDecrementTTL == nil {
+		return false
+	}
+
+	ret, _, _ := winDivertHelperDecrementTTL.Call(
+		uintptr(unsafe.Pointer(&p.Raw[0])),
+		uintptr(p.PacketLen),
+	)
+	return ret != 0
 }
